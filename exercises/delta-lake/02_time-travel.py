@@ -75,6 +75,7 @@
 
 # COMMAND ----------
 
+# DBTITLE 1,DEFINE CATALOG
 CATALOG = 'db_code'
 SCHEMA = 'time_travel'
 display(spark.table(f"{CATALOG}.{SCHEMA}.tt_ex1_orders"))
@@ -379,7 +380,7 @@ print("Exercise 4 passed!")
 # MAGIC ## Exercise 5: Diff Two Versions
 # MAGIC **Difficulty**: Medium | **Time**: ~15 min
 # MAGIC
-# MAGIC Find all order_ids that were added, removed, or modified between version 0 and
+# MAGIC Find all order_ids that were **added, removed, or modified** between version 0 and
 # MAGIC the current version.
 # MAGIC
 # MAGIC **Table** (`tt_ex5_orders`): currently 5 rows. Operations performed:
@@ -418,8 +419,28 @@ display(spark.sql(f"SELECT * FROM {CATALOG}.{SCHEMA}.tt_ex5_orders VERSION AS OF
 # EXERCISE_KEY: tt_ex5
 # TODO: Find order_ids that changed between version 0 and current
 
-# Your code here
+# The previous code only compared order_ids, so modified rows (same order_id, different values) are missed.
+# To catch added, removed, or modified rows, compare full rows and extract order_ids from differences.
 
+df_v0 = spark.sql(f"SELECT * FROM {CATALOG}.{SCHEMA}.tt_ex5_orders VERSION AS OF 0")
+df_current = spark.sql(f"SELECT * FROM {CATALOG}.{SCHEMA}.tt_ex5_orders")
+
+# Rows in v0 but not in current (deleted or modified)
+diff_v0 = df_v0.join(df_current, df_v0.columns, "left_anti")
+# Rows in current but not in v0 (added or modified)
+diff_current = df_current.join(df_v0, df_v0.columns, "left_anti")
+
+# Union both diffs and select distinct order_ids
+changes = diff_v0.select("order_id").union(diff_current.select("order_id")).distinct()
+
+changes.createOrReplaceTempView("tt_ex5_changes_temp")
+
+spark.sql(f"""
+    CREATE OR REPLACE TABLE {CATALOG}.{SCHEMA}.tt_ex5_changes AS
+    SELECT order_id FROM tt_ex5_changes_temp
+""")
+
+display(spark.table(f"{CATALOG}.{SCHEMA}.tt_ex5_changes"))
 
 # COMMAND ----------
 
@@ -461,6 +482,16 @@ print("Exercise 5 passed!")
 # MAGIC 2. Use `DESCRIBE HISTORY` to get all version numbers
 # MAGIC 3. Check each version to find when that order_id first appeared
 # MAGIC 4. Fill in the placeholder values below
+
+# COMMAND ----------
+
+# DBTITLE 1,Current ex6 orders
+display(spark.table(f"{CATALOG}.{SCHEMA}.tt_ex6_orders"))
+
+# COMMAND ----------
+
+# DBTITLE 1,check version of ex6 orders
+display(spark.sql(f"DESCRIBE HISTORY {CATALOG}.{SCHEMA}.tt_ex6_orders"))
 
 # COMMAND ----------
 
