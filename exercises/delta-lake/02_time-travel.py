@@ -1,5 +1,8 @@
 # Databricks notebook source
-# COMMAND ----------
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
 # MAGIC %md
 # MAGIC # Time Travel & Restore
 # MAGIC **Topic**: Delta Lake | **Exercises**: 7 | **Checkpoints**: 1 | **Total Time**: ~90 min
@@ -33,6 +36,7 @@
 # MAGIC %run ./setup/time-travel-setup
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC **Setup complete.** Exercise tables are in `{CATALOG}.{SCHEMA}` (time_travel schema).
 # MAGIC Base tables (orders, customers) are in `{CATALOG}.{BASE_SCHEMA}` (delta_lake schema).
@@ -51,6 +55,7 @@
 # MAGIC assertions work regardless of auto-OPTIMIZE behavior. Version 0 (CTAS) is always safe.
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 1: Query by Version Number
 # MAGIC **Difficulty**: Easy | **Time**: ~5 min
@@ -70,11 +75,50 @@
 
 # COMMAND ----------
 
+CATALOG = 'db_code'
+SCHEMA = 'time_travel'
+display(spark.table(f"{CATALOG}.{SCHEMA}.tt_ex1_orders"))
+
+# COMMAND ----------
+
 # EXERCISE_KEY: tt_ex1
 # TODO: Query the table at version 0 and save to tt_ex1_result
 
-# Your code here
+# Query version 0 and create result table
+spark.sql(f"""
+    CREATE OR REPLACE TABLE {CATALOG}.{SCHEMA}.tt_ex1_result AS
+    SELECT * FROM {CATALOG}.{SCHEMA}.tt_ex1_orders VERSION AS OF 0
+""")
 
+display(spark.table(f"{CATALOG}.{SCHEMA}.tt_ex1_result"))
+
+
+# COMMAND ----------
+
+# DBTITLE 1,VERSION AS OF - SQL vs Python Comparison
+# Demo: Two ways to query VERSION AS OF
+
+# ===== APPROACH 1: SQL =====
+print("SQL Approach:")
+df_sql = spark.sql(f"""
+    SELECT * FROM {CATALOG}.{SCHEMA}.tt_ex1_orders VERSION AS OF 0
+""")
+print(f"Rows from SQL: {df_sql.count()}")
+display(df_sql)
+
+print("\n" + "="*50 + "\n")
+
+# ===== APPROACH 2: Python DataFrame API =====
+print("Python DataFrame API Approach:")
+df_python = spark.read.format("delta") \
+    .option("versionAsOf", 0) \
+    .table(f"{CATALOG}.{SCHEMA}.tt_ex1_orders")
+print(f"Rows from Python: {df_python.count()}")
+display(df_python)
+
+# Both produce identical results!
+assert df_sql.count() == df_python.count()
+print("\n✓ Both approaches return the same data!")
 
 # COMMAND ----------
 
@@ -88,6 +132,7 @@ assert result.filter("order_id = 'ORD-005'").count() == 1, \
 print("Exercise 1 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 2: Query by Timestamp
 # MAGIC **Difficulty**: Easy | **Time**: ~10 min
@@ -110,11 +155,93 @@ print("Exercise 1 passed!")
 
 # COMMAND ----------
 
+display(spark.table(f"{CATALOG}.{SCHEMA}.tt_ex2_orders"))
+
+# COMMAND ----------
+
+# DBTITLE 1,DESCRIBE HISTORY - SQL vs Python Comparison
+# Demo: Two ways to get table history
+
+# ===== APPROACH 1: SQL =====
+print("SQL Approach:")
+history_sql = spark.sql(f"""
+    DESCRIBE HISTORY {CATALOG}.{SCHEMA}.tt_ex2_orders
+""")
+print(f"History rows (SQL): {history_sql.count()}")
+print("Columns available:", history_sql.columns[:5], "...")
+display(history_sql.select("version", "timestamp", "operation", "operationParameters"))
+
+print("\n" + "="*50 + "\n")
+
+# ===== APPROACH 2: Python DeltaTable API =====
+print("Python DeltaTable API Approach:")
+from delta.tables import DeltaTable
+
+delta_table = DeltaTable.forName(spark, f"{CATALOG}.{SCHEMA}.tt_ex2_orders")
+history_python = delta_table.history()
+
+print(f"History rows (Python): {history_python.count()}")
+print("Columns available:", history_python.columns[:5], "...")
+display(history_python.select("version", "timestamp", "operation", "operationParameters"))
+
+# Both produce identical results!
+assert history_sql.count() == history_python.count()
+print("\n✓ Both approaches return the same history!")
+
+# COMMAND ----------
+
+# Find the UPDATE operation's timestamp and query the table as of that timestamp using Spark SQL only
+
+history = spark.sql(f"""
+    DESCRIBE HISTORY {CATALOG}.{SCHEMA}.tt_ex2_orders
+""")
+
+# Filter for UPDATE operations
+state_update = history.filter(history.operation == 'UPDATE')
+
+# Select just the timestamp column and get the first (most recent) value
+update_timestamp = state_update.select('timestamp').first()[0]
+
+print(f"UPDATE timestamp: {update_timestamp}")
+print(f"Type: {type(update_timestamp)}")
+
+# COMMAND ----------
+
+# DBTITLE 1,Demo: Extract Timestamp and Use in TIMESTAMP AS OF
+# Complete demo: Filter history → Extract timestamp → Use in time travel query
+
+# Step 1: Get history and filter for UPDATE
+history = spark.sql(f"DESCRIBE HISTORY {CATALOG}.{SCHEMA}.tt_ex2_orders")
+update_ops = history.filter(history.operation == 'UPDATE')
+
+print("Available UPDATE operations:")
+display(update_ops.select('version', 'timestamp', 'operation'))
+
+# Step 2: Extract the timestamp (get the most recent UPDATE)
+update_timestamp = update_ops.select('timestamp').first()[0]
+print(f"\nExtracted timestamp: {update_timestamp}")
+
+# Step 3: Use the timestamp in TIMESTAMP AS OF query
+print(f"\nQuerying table at timestamp {update_timestamp}:")
+result = spark.sql(f"""
+    SELECT * FROM {CATALOG}.{SCHEMA}.tt_ex2_orders 
+    TIMESTAMP AS OF '{update_timestamp}'
+""")
+
+print(f"Rows at UPDATE timestamp: {result.count()}")
+display(result)
+
+# COMMAND ----------
+
 # EXERCISE_KEY: tt_ex2
 # TODO: Look up the UPDATE operation's timestamp via DESCRIBE HISTORY, then query with TIMESTAMP AS OF and save to tt_ex2_result
-
+spark.sql(f"""
+    CREATE OR REPLACE TABLE {CATALOG}.{SCHEMA}.tt_ex2_result
+    AS SELECT * FROM {CATALOG}.{SCHEMA}.tt_ex2_orders
+    TIMESTAMP AS OF '{update_timestamp}'"""
+          )
 # Your code here
-
+display(spark.table(f"{CATALOG}.{SCHEMA}.tt_ex2_result"))
 
 # COMMAND ----------
 
@@ -130,6 +257,7 @@ assert result.filter("order_id = 'ORD-003'").select("amount").collect()[0][0] ==
 print("Exercise 2 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Checkpoint 3: DESCRIBE HISTORY
 # MAGIC **Time**: ~5 min
@@ -153,12 +281,25 @@ print("Exercise 2 passed!")
 
 # COMMAND ----------
 
+display(spark.table(f"{CATALOG}.{SCHEMA}.tt_ex3_orders"))
+
+# COMMAND ----------
+
+history_3 = spark.sql(f"""
+    DESCRIBE HISTORY {CATALOG}.{SCHEMA}.tt_ex3_orders
+""")
+
+display(history_3)
+
+# COMMAND ----------
+
 # EXERCISE_KEY: tt_ex3
 # TODO: Run DESCRIBE HISTORY on tt_ex3_orders, then fill in what you observe
 
-total_versions = 0        # Replace: how many versions (rows) does the history show?
-last_dml_operation = ""   # Replace: what is the operation type of the LATEST version? (e.g., "UPDATE", "DELETE", "WRITE", "OPTIMIZE")
-num_dml_operations = 0    # Replace: how many DML operations (non-OPTIMIZE) are in the history?
+total_versions = history_3.count()        # Replace: how many versions (rows) does the history show?
+last_dml_operation = history_3.orderBy('version', ascending=False).select('operation').limit(1).collect()[0][0]
+   # Replace: what is the operation type of the LATEST version? (e.g., "UPDATE", "DELETE", "WRITE", "OPTIMIZE")
+num_dml_operations = history_3.filter(history_3.operation != 'OPTIMIZE').count()    # Replace: how many DML operations (non-OPTIMIZE) are in the history?
 
 spark.sql(f"""
     CREATE OR REPLACE TABLE {CATALOG}.{SCHEMA}.tt_ex3_history AS
@@ -166,6 +307,8 @@ spark.sql(f"""
            '{last_dml_operation}' AS last_dml_operation,
            CAST({num_dml_operations} AS INT) AS num_dml_operations
 """)
+
+display(spark.table(f"{CATALOG}.{SCHEMA}.tt_ex3_history"))
 
 # COMMAND ----------
 
@@ -182,6 +325,7 @@ assert row.num_dml_operations == TT_EX3_DML_COUNT, \
 print("Exercise 3 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 4: RESTORE to Previous Version
 # MAGIC **Difficulty**: Medium | **Time**: ~10 min
@@ -202,11 +346,19 @@ print("Exercise 3 passed!")
 
 # COMMAND ----------
 
+display(spark.table(f"{CATALOG}.{SCHEMA}.tt_ex4_orders"))
+
+# COMMAND ----------
+
+display(spark.sql(f"DESCRIBE HISTORY {CATALOG}.{SCHEMA}.tt_ex4_orders"))
+
+# COMMAND ----------
+
 # EXERCISE_KEY: tt_ex4
 # TODO: Restore the table to version 0
-
+spark.sql(f"RESTORE TABLE {CATALOG}.{SCHEMA}.tt_ex4_orders TO VERSION AS OF 0")
 # Your code here
-
+display(spark.table(f"{CATALOG}.{SCHEMA}.tt_ex4_orders"))
 
 # COMMAND ----------
 
@@ -222,6 +374,7 @@ assert result.filter("amount > 0").count() == 5, \
 print("Exercise 4 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 5: Diff Two Versions
 # MAGIC **Difficulty**: Medium | **Time**: ~15 min
@@ -252,6 +405,16 @@ print("Exercise 4 passed!")
 
 # COMMAND ----------
 
+# DBTITLE 1,Current ex5 orders
+display(spark.table(f"{CATALOG}.{SCHEMA}.tt_ex5_orders"))
+
+# COMMAND ----------
+
+# DBTITLE 1,Version 0 of ex5_orders
+display(spark.sql(f"SELECT * FROM {CATALOG}.{SCHEMA}.tt_ex5_orders VERSION AS OF 0"))
+
+# COMMAND ----------
+
 # EXERCISE_KEY: tt_ex5
 # TODO: Find order_ids that changed between version 0 and current
 
@@ -272,6 +435,7 @@ assert "ORD-101" in changed_ids, "ORD-101 was added and should be in changes"
 print("Exercise 5 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 6: Audit Trail
 # MAGIC **Difficulty**: Medium | **Time**: ~15 min
@@ -323,6 +487,7 @@ assert row.bad_order_id == "ORD-999", f"Bad order_id is ORD-999, got {row.bad_or
 print("Exercise 6 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 7: Selective Undo via MERGE + Time Travel
 # MAGIC **Difficulty**: Hard | **Time**: ~20 min
@@ -374,6 +539,7 @@ assert bad_rows == 0, f"Found {bad_rows} incorrectly cancelled rows (amount < 10
 print("Exercise 7 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 8: Reproducible Reporting with Time Travel
 # MAGIC **Difficulty**: Hard | **Time**: ~15 min
