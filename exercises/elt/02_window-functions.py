@@ -1,5 +1,8 @@
 # Databricks notebook source
-# COMMAND ----------
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
 # MAGIC %md
 # MAGIC # Window Functions
 # MAGIC **Topic**: ELT | **Exercises**: 8 | **Total Time**: ~80 min
@@ -29,6 +32,7 @@
 # MAGIC %run ./setup/window-functions-setup
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC **Setup complete.** Exercise tables are in `db_code.window_functions`.
 # MAGIC Each exercise reads from its own source table and writes results to a separate output table.
@@ -42,6 +46,12 @@
 # MAGIC - Ex 8 (hard): `window_ex8_events` - 15 clickstream events across 2 users
 
 # COMMAND ----------
+
+CATALOG = 'db_code'
+SCHEMA = 'window_functions'
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 1: ROW_NUMBER Dedup - Keep Latest Order per Customer
 # MAGIC **Difficulty**: Easy | **Time**: ~5 min
@@ -68,11 +78,23 @@
 
 # COMMAND ----------
 
-# EXERCISE_KEY: window_ex1
-# TODO: Deduplicate orders keeping latest per customer using ROW_NUMBER + QUALIFY
+# DBTITLE 1,load ex1 orders
+# MAGIC %sql
+# MAGIC SELECT * FROM db_code.window_functions.window_ex1_orders;
+# MAGIC
 
-# Your code here
+# COMMAND ----------
 
+# MAGIC %sql
+# MAGIC -- EXERCISE_KEY: window_ex1
+# MAGIC -- TODO: Deduplicate orders keeping latest per customer using ROW_NUMBER + QUALIFY
+# MAGIC CREATE or replace table db_code.window_functions.window_ex1_deduped AS
+# MAGIC SELECT *
+# MAGIC FROM db_code.window_functions.window_ex1_orders
+# MAGIC WHERE customer_id IS NOT NULL
+# MAGIC QUALIFY row_number() OVER(partition by customer_id order by updated_at desc) = 1;
+# MAGIC -- Your code here
+# MAGIC SELECT * FROM db_code.window_functions.window_ex1_deduped;
 
 # COMMAND ----------
 
@@ -94,6 +116,7 @@ assert "row_number" not in [c.lower() for c in result.columns] and "rn" not in [
 print("Exercise 1 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 2: RANK vs DENSE_RANK - Rank Customers by Order Count
 # MAGIC **Difficulty**: Easy | **Time**: ~5 min
@@ -123,11 +146,23 @@ print("Exercise 1 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: window_ex2
-# TODO: Rank customers by order count showing RANK vs DENSE_RANK difference
+# DBTITLE 1,load ex2 order
+# MAGIC %sql
+# MAGIC SELECT * FROM db_code.window_functions.window_ex2_orders
 
-# Your code here
+# COMMAND ----------
 
+# MAGIC %sql
+# MAGIC -- EXERCISE_KEY: window_ex2
+# MAGIC -- TODO: Rank customers by order count showing RANK vs DENSE_RANK difference
+# MAGIC CREATE OR REPLACE TABLE db_code.window_functions.window_ex2_ranked as
+# MAGIC SELECT customer_id, COUNT(*) order_count,
+# MAGIC         RANK() OVER(ORDER BY COUNT(*) DESC) AS rank_val, 
+# MAGIC         DENSE_RANK() OVER(ORDER BY COUNT(*) DESC) AS dense_rank_val
+# MAGIC FROM db_code.window_functions.window_ex2_orders
+# MAGIC GROUP BY customer_id;
+# MAGIC -- Your code here
+# MAGIC SELECT * FROM db_code.window_functions.window_ex2_ranked
 
 # COMMAND ----------
 
@@ -159,6 +194,7 @@ assert c6.dense_rank_val == 4, f"CUST-006 dense_rank_val should be 4, got {c6.de
 print("Exercise 2 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 3: LAG for Period-Over-Period - Order Amount Change
 # MAGIC **Difficulty**: Medium | **Time**: ~10 min
@@ -184,11 +220,21 @@ print("Exercise 2 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: window_ex3
-# TODO: Calculate order-over-order amount change per customer using LAG
+# MAGIC %sql
+# MAGIC SELECT * FROM db_code.window_functions.window_ex3_orders
 
-# Your code here
+# COMMAND ----------
 
+# MAGIC %sql
+# MAGIC -- EXERCISE_KEY: window_ex3
+# MAGIC -- TODO: Calculate order-over-order amount change per customer using LAG
+# MAGIC CREATE or replace table db_code.window_functions.window_ex3_changes AS
+# MAGIC SELECT order_id, customer_id, amount, order_date, 
+# MAGIC     LAG(amount) OVER(PARTITION BY customer_id ORDER BY order_date) AS prev_amount, 
+# MAGIC     amount - prev_amount AS amount_change
+# MAGIC FROM db_code.window_functions.window_ex3_orders;
+# MAGIC -- Your code here
+# MAGIC SELECT * FROM db_code.window_functions.window_ex3_changes
 
 # COMMAND ----------
 
@@ -215,6 +261,7 @@ assert cust1_last.amount_change == 80.00, f"ORD-304 amount_change should be 80.0
 print("Exercise 3 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 4: Running Totals with Explicit ROWS BETWEEN Frame
 # MAGIC **Difficulty**: Medium | **Time**: ~10 min
@@ -240,11 +287,20 @@ print("Exercise 3 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: window_ex4
-# TODO: Calculate cumulative order amount per customer with explicit frame specification
+# MAGIC %sql 
+# MAGIC select * from db_code.window_functions.window_ex4_orders
 
-# Your code here
+# COMMAND ----------
 
+# MAGIC %sql
+# MAGIC -- # EXERCISE_KEY: window_ex4
+# MAGIC -- # TODO: Calculate cumulative order amount per customer with explicit frame specification
+# MAGIC create or replace table db_code.window_functions.window_ex4_running_totals as
+# MAGIC SELECT order_id, customer_id, amount, order_date, 
+# MAGIC     SUM(amount) OVER(PARTITION BY customer_id order by order_date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running_total
+# MAGIC FROM db_code.window_functions.window_ex4_orders;
+# MAGIC -- # Your code here
+# MAGIC select * FROM db_code.window_functions.window_ex4_running_totals
 
 # COMMAND ----------
 
@@ -273,6 +329,7 @@ assert cust3_mid == 375.00, f"CUST-003 second running_total should be 375.00, go
 print("Exercise 4 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 5: NTILE Quartile Bucketing by Total Spend
 # MAGIC **Difficulty**: Medium | **Time**: ~10 min
@@ -298,11 +355,19 @@ print("Exercise 4 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: window_ex5
-# TODO: Bucket customers into quartiles by total spend using NTILE
+# MAGIC %sql
+# MAGIC SELECT * FROM db_code.window_functions.window_ex5_customer_spend
 
-# Your code here
+# COMMAND ----------
 
+# MAGIC %sql
+# MAGIC -- EXERCISE_KEY: window_ex5
+# MAGIC -- TODO: Bucket customers into quartiles by total spend using NTILE
+# MAGIC CREATE OR REPLACE TABLE db_code.window_functions.window_ex5_quartiles AS
+# MAGIC SELECT *, NTILE(4) OVER(ORDER BY total_spend) AS spend_quartile
+# MAGIC FROM db_code.window_functions.window_ex5_customer_spend;
+# MAGIC -- Your code here
+# MAGIC SELECT * FROM db_code.window_functions.window_ex5_quartiles
 
 # COMMAND ----------
 
@@ -333,6 +398,7 @@ assert q1b == 1, f"CUST-006 (spend=150) should be quartile 1, got {q1b}"
 print("Exercise 5 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 6: FIRST_VALUE/LAST_VALUE - First and Most Recent Order
 # MAGIC **Difficulty**: Medium | **Time**: ~10 min
@@ -361,11 +427,24 @@ print("Exercise 5 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: window_ex6
-# TODO: Find first and most recent order per customer using FIRST_VALUE and LAST_VALUE
+# MAGIC %sql
+# MAGIC SELECT * FROM db_code.window_functions.window_ex6_orders
+# MAGIC
 
-# Your code here
+# COMMAND ----------
 
+# MAGIC %sql
+# MAGIC -- EXERCISE_KEY: window_ex6
+# MAGIC -- TODO: Find first and most recent order per customer using FIRST_VALUE and LAST_VALUE
+# MAGIC CREATE OR REPLACE TABLE db_code.window_functions.window_ex6_first_last AS
+# MAGIC SELECT order_id, customer_id, amount, order_date, 
+# MAGIC         first_value(order_id) OVER(partition by customer_id) AS first_order_id, 
+# MAGIC         first_value(amount) OVER(partition by customer_id) AS first_order_amount, 
+# MAGIC         last_value(order_id) OVER(partition by customer_id) AS last_order_id, 
+# MAGIC         last_value(amount) OVER(partition by customer_id) AS last_order_amount
+# MAGIC FROM db_code.window_functions.window_ex6_orders;
+# MAGIC -- Your code here
+# MAGIC SELECT * FROM db_code.window_functions.window_ex6_first_last;
 
 # COMMAND ----------
 
@@ -397,6 +476,7 @@ assert c4.last_order_id == "ORD-615", f"CUST-004 last_order_id should be ORD-615
 print("Exercise 6 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 7: QUALIFY for Top-N Per Group Without Subquery
 # MAGIC **Difficulty**: Medium | **Time**: ~10 min
@@ -426,11 +506,21 @@ print("Exercise 6 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: window_ex7
-# TODO: Get top 2 highest-value orders per customer using QUALIFY
+# MAGIC %sql
+# MAGIC SELECT * FROM db_code.window_functions.window_ex7_orders
 
-# Your code here
+# COMMAND ----------
 
+# MAGIC %sql
+# MAGIC -- EXERCISE_KEY: window_ex7
+# MAGIC -- TODO: Get top 2 highest-value orders per customer using QUALIFY
+# MAGIC CREATE OR REPLACE TABLE db_code.window_functions.window_ex7_top2 AS
+# MAGIC SELECT *
+# MAGIC FROM db_code.window_functions.window_ex7_orders
+# MAGIC QUALIFY ROW_NUMBER() OVER(PARTITION BY customer_id ORDER BY amount DESC) <= 2;
+# MAGIC -- Your code here
+# MAGIC SELECT * FROM db_code.window_functions.window_ex7_top2
+# MAGIC
 
 # COMMAND ----------
 
@@ -461,6 +551,7 @@ for cust in ["CUST-001", "CUST-002", "CUST-003"]:
 print("Exercise 7 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 8: Sessionization - Assign Session IDs Based on 30-Min Gaps
 # MAGIC **Difficulty**: Hard | **Time**: ~20 min
@@ -490,11 +581,18 @@ print("Exercise 7 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: window_ex8
-# TODO: Assign session IDs based on 30-minute inactivity gap
+# MAGIC %sql
+# MAGIC SELECT * FROM db_code.window_functions.window_ex8_events
 
-# Your code here
+# COMMAND ----------
 
+# %sql
+# -- EXERCISE_KEY: window_ex8
+# -- TODO: Assign session IDs based on 30-minute inactivity gap
+# CREATE OR REPLACE TABLE db_code.window_functions.window_ex8_sessions AS
+
+# -- Your code here
+# SELECT * FROM db_code.window_functions.window_ex8_sessions;
 
 # COMMAND ----------
 
