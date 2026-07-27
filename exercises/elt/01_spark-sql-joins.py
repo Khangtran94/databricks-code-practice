@@ -119,6 +119,7 @@ display(spark.table(f"{BASE_SCHEMA}.orders"))
 
 # COMMAND ----------
 
+# DBTITLE 1,ex1 use pyspark
 # EXERCISE_KEY: spark_sql_joins_ex1
 # TODO: Inner join orders with customers and write to Delta table
 orders = spark.table(f"{BASE_SCHEMA}.orders")
@@ -134,6 +135,7 @@ display(spark.table(f"{EX_SCHEMA}.joins_ex1_output"))
 
 # COMMAND ----------
 
+# DBTITLE 1,ex1 use SQL
 # MAGIC %sql
 # MAGIC CREATE OR REPLACE TABLE db_code.spark_sql_joins.joins_ex1_sql_output AS
 # MAGIC SELECT order_id, customer_id, amount, status, order_date,
@@ -187,6 +189,7 @@ print("Exercise 1 passed!")
 
 # COMMAND ----------
 
+# DBTITLE 1,ex2 SQL
 # MAGIC %sql
 # MAGIC -- # EXERCISE_KEY: spark_sql_joins_ex2
 # MAGIC -- # TODO: Left join orders with customers, COALESCE nulls, write to Delta
@@ -248,6 +251,7 @@ display(spark.table(f"{BASE_SCHEMA}.order_items"))
 
 # COMMAND ----------
 
+# DBTITLE 1,ex3 normal SQL
 # MAGIC %sql
 # MAGIC -- # EXERCISE_KEY: spark_sql_joins_ex3
 # MAGIC -- # TODO: Anti-join to find orphan line items, write to Delta
@@ -260,6 +264,7 @@ display(spark.table(f"{BASE_SCHEMA}.order_items"))
 
 # COMMAND ----------
 
+# DBTITLE 1,ex3 LEFT ANTI
 # MAGIC %sql
 # MAGIC CREATE OR REPLACE TABLE db_code.spark_sql_joins.joins_ex3_sql_leftanti_output AS
 # MAGIC SELECT *
@@ -271,6 +276,7 @@ display(spark.table(f"{BASE_SCHEMA}.order_items"))
 
 # COMMAND ----------
 
+# DBTITLE 1,ex3 pyspark
 order_items = spark.table(f"{BASE_SCHEMA}.order_items")
 ex_3_leftanti_py = order_items.join(orders,on='order_id',how='left_anti')
 ex_3_leftanti_py.write.mode("overwrite").saveAsTable(f"{EX_SCHEMA}.joins_ex3_py_leftanti_output")
@@ -325,6 +331,7 @@ print("Exercise 3 passed!")
 
 # COMMAND ----------
 
+# DBTITLE 1,ex4 sql
 # MAGIC %sql
 # MAGIC -- # EXERCISE_KEY: spark_sql_joins_ex4
 # MAGIC -- # TODO: Semi-join customers against orders, write to Delta
@@ -386,16 +393,28 @@ print("Exercise 4 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: spark_sql_joins_ex5
-# TODO: Self-join orders to find same-day pairs, write to Delta
+# MAGIC %sql
+# MAGIC SELECT * FROM db_code.elt.orders
+# MAGIC limit 10
 
-# Your code here
+# COMMAND ----------
 
+# MAGIC %sql
+# MAGIC -- # EXERCISE_KEY: spark_sql_joins_ex5
+# MAGIC -- # TODO: Self-join orders to find same-day pairs, write to Delta
+# MAGIC CREATE OR REPLACE TABLE db_code.spark_sql_joins.joins_ex5_output AS
+# MAGIC SELECT o1.customer_id, o1.order_date, o1.order_id AS order_id_1, o2.order_id AS order_id_2, o1.amount AS amount_1, o2.amount AS amount_2
+# MAGIC FROM db_code.elt.orders AS o1
+# MAGIC INNER JOIN db_code.elt.orders AS o2
+# MAGIC ON o1.customer_id = o2.customer_id AND o1.order_date = o2.order_date AND o1.order_id < o2.order_id
+# MAGIC WHERE o1.customer_id IS NOT NULL;
+# MAGIC -- # Your code here
+# MAGIC SELECT * FROM db_code.spark_sql_joins.joins_ex5_output
 
 # COMMAND ----------
 
 # Validate Exercise 5
-result = spark.table(f"{CATALOG}.{SCHEMA}.joins_ex5_output")
+result = spark.table(f"{EX_SCHEMA}.joins_ex5_output")
 
 # Non-empty: same-day pairs exist in the base data (CUST-003, CUST-047, CUST-050)
 assert result.count() > 0, \
@@ -449,16 +468,33 @@ print("Exercise 5 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: spark_sql_joins_ex6
-# TODO: Multi-table join with QUALIFY, write to Delta
+# DBTITLE 1,load products
+# MAGIC %sql 
+# MAGIC DESCRIBE db_code.elt.products
 
-# Your code here
+# COMMAND ----------
 
+# MAGIC %sql
+# MAGIC -- # EXERCISE_KEY: spark_sql_joins_ex6
+# MAGIC -- # TODO: Multi-table join with QUALIFY, write to Delta
+# MAGIC CREATE OR REPLACE TABLE db_code.spark_sql_joins.joins_ex6_output AS
+# MAGIC SELECT o.order_id, c.name AS customer_name,
+# MAGIC         c.region, os.quantity, os.unit_price, 
+# MAGIC         p.name AS product_name, 
+# MAGIC         p.category, o.status
+# MAGIC FROM db_code.elt.orders AS o
+# MAGIC INNER JOIN db_code.elt.customers AS c USING (customer_id)
+# MAGIC INNER JOIN db_code.elt.order_items AS os USING (order_id)
+# MAGIC INNER JOIN db_code.elt.products AS p USING (product_id)
+# MAGIC QUALIFY ROW_NUMBER() OVER (PARTITION BY o.order_id ORDER BY os.unit_price DESC) = 1;
+# MAGIC
+# MAGIC -- # Your code here
+# MAGIC SELECT * FROM db_code.spark_sql_joins.joins_ex6_output;
 
 # COMMAND ----------
 
 # Validate Exercise 6
-result = spark.table(f"{CATALOG}.{SCHEMA}.joins_ex6_output")
+result = spark.table(f"{EX_SCHEMA}.joins_ex6_output")
 
 # One row per order_id
 assert result.count() == result.select("order_id").distinct().count(), \
@@ -506,16 +542,22 @@ print("Exercise 6 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: spark_sql_joins_ex7
-# TODO: GROUP BY with HAVING for high-value customers, write to Delta
-
-# Your code here
-
+# MAGIC %sql
+# MAGIC -- # EXERCISE_KEY: spark_sql_joins_ex7
+# MAGIC -- # TODO: GROUP BY with HAVING for high-value customers, write to Delta
+# MAGIC CREATE OR REPLACE TABLE db_code.spark_sql_joins.joins_ex7_output AS
+# MAGIC SELECT c.customer_id, c.name, c.region, COUNT(*) AS order_count, SUM(AMOUNT) AS total_spent, AVG(amount) AS avg_order_value
+# MAGIC FROM db_code.elt.orders AS o 
+# MAGIC INNER JOIN db_code.elt.customers AS c USING (customer_id)
+# MAGIC GROUP BY c.customer_id, c.name, c.region
+# MAGIC HAVING total_spent > 500;
+# MAGIC -- # Your code here
+# MAGIC SELECT * FROM db_code.spark_sql_joins.joins_ex7_output
 
 # COMMAND ----------
 
 # Validate Exercise 7
-result = spark.table(f"{CATALOG}.{SCHEMA}.joins_ex7_output")
+result = spark.table(f"{EX_SCHEMA}.joins_ex7_output")
 
 # Row count
 assert result.count() == JOINS_EX7_EXPECTED_COUNT, \
@@ -573,16 +615,23 @@ print("Exercise 7 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: spark_sql_joins_ex8
-# TODO: Build ROLLUP aggregation table, write to Delta
-
-# Your code here
-
+# MAGIC %sql
+# MAGIC -- # EXERCISE_KEY: spark_sql_joins_ex8
+# MAGIC -- # TODO: Build ROLLUP aggregation table, write to Delta
+# MAGIC CREATE OR REPLACE TABLE db_code.spark_sql_joins.joins_ex8_rollup AS
+# MAGIC SELECT c.region, c.tier, COUNT(*) AS order_count, SUM(AMOUNT) AS total_revenue, AVG(amount) AS avg_order_value
+# MAGIC FROM db_code.elt.orders AS o 
+# MAGIC INNER JOIN db_code.elt.customers AS c USING (customer_id)
+# MAGIC WHERE status = 'completed'
+# MAGIC GROUP BY ROLLUP(c.region, c.tier);
+# MAGIC -- # Your code here
+# MAGIC SELECT * FROM db_code.spark_sql_joins.joins_ex8_rollup
+# MAGIC order by region, tier;
 
 # COMMAND ----------
 
 # Validate Exercise 8
-rollup = spark.table(f"{CATALOG}.{SCHEMA}.joins_ex8_rollup")
+rollup = spark.table(f"{EX_SCHEMA}.joins_ex8_rollup")
 
 # Must have required columns
 assert "region" in rollup.columns, "Missing 'region' column"
@@ -639,16 +688,23 @@ print("Exercise 8 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: spark_sql_joins_ex9
-# TODO: Build CUBE aggregation table, write to Delta
-
-# Your code here
-
+# MAGIC %sql
+# MAGIC -- EXERCISE_KEY: spark_sql_joins_ex9
+# MAGIC -- TODO: Build CUBE aggregation table, write to Delta
+# MAGIC CREATE OR REPLACE TABLE db_code.spark_sql_joins.joins_ex9_cube AS
+# MAGIC SELECT c.region, o.status, COUNT(*) AS order_count, SUM(AMOUNT) AS total_revenue, AVG(amount) AS avg_order_value
+# MAGIC FROM db_code.elt.orders AS o 
+# MAGIC INNER JOIN db_code.elt.customers AS c USING (customer_id)
+# MAGIC WHERE status = 'completed'
+# MAGIC GROUP BY CUBE(c.region,o.status);
+# MAGIC -- Your code here
+# MAGIC SELECT * FROM db_code.spark_sql_joins.joins_ex9_cube
+# MAGIC order by region,status;
 
 # COMMAND ----------
 
 # Validate Exercise 9
-cube = spark.table(f"{CATALOG}.{SCHEMA}.joins_ex9_cube")
+cube = spark.table(f"{EX_SCHEMA}.joins_ex9_cube")  # Ensure 'status' is included in the cube creation logic
 
 # Must have required columns
 assert "region" in cube.columns, "Missing 'region' column"
