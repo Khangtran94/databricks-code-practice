@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
 # MAGIC %md
 # MAGIC # PySpark DataFrame Transformations
 # MAGIC Practice core PySpark DataFrame API operations: select, filter, withColumn, when/otherwise,
@@ -58,6 +62,17 @@
 
 # COMMAND ----------
 
+CATALOG = 'db_code'
+SCHEMA = 'pyspark_transformations'
+
+# COMMAND ----------
+
+# DBTITLE 1,load ex1 dataset
+order_ex1 = spark.table(f"{CATALOG}.{SCHEMA}.orders_ex1")
+display(order_ex1)
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ---
 # MAGIC ## Exercise 1: Basic select/filter/withColumn
@@ -83,9 +98,23 @@
 
 # COMMAND ----------
 
+# DBTITLE 1,ex1
 # EXERCISE_KEY: pyspark_ex1
 # TODO: Filter to completed orders, add amount_with_tax column, write to Delta
-# Your code here
+from pyspark.sql import functions as F
+
+output_ex1 = (
+    order_ex1
+    .filter(F.col("status") == "completed")
+    .select('order_id', 'customer_id', 'amount', 'order_date')
+    .withColumn('amount_with_tax', F.round(F.col('amount') * 1.08, 2))
+)
+
+output_ex1.write.format("delta").mode("overwrite").saveAsTable(
+    f"{CATALOG}.{SCHEMA}.completed_orders_ex1"
+)
+
+display(spark.table(f"{CATALOG}.{SCHEMA}.completed_orders_ex1"))
 
 # COMMAND ----------
 
@@ -114,6 +143,12 @@ if "status" in result_ex1.columns:
     assert result_ex1.filter("status != 'completed'").count() == 0, "Non-completed orders found in output"
 
 print("Exercise 1 passed!")
+
+# COMMAND ----------
+
+# DBTITLE 1,load ex2 dataset
+order_ex2 = spark.table(f"{CATALOG}.{SCHEMA}.customers_ex2")
+display(order_ex2)
 
 # COMMAND ----------
 
@@ -149,9 +184,23 @@ print("Exercise 1 passed!")
 
 # COMMAND ----------
 
+# DBTITLE 1,ex2
 # EXERCISE_KEY: pyspark_ex2
 # TODO: Rename columns to snake_case, cast signupDate to DateType, write to Delta
+from pyspark.sql import functions as F
+output_ex2 = (order_ex2
+              .withColumnRenamed('customerId','customer_id')
+              .withColumnRenamed('customerName','customer_name')
+              .withColumnRenamed('emailAddress','email_address')
+              .withColumnRenamed('customerRegion','region')
+              .withColumnRenamed('customerTier','tier')
+              .withColumn('signup_date', F.to_date(F.col('signupDate')))
+              .drop('signupDate'))
+
+output_ex2.write.format('delta').mode('overwrite').option('overwriteSchema', 'true').saveAsTable(f"{CATALOG}.{SCHEMA}.customers_clean_ex2")
+
 # Your code here
+display(spark.table(f"{CATALOG}.{SCHEMA}.customers_clean_ex2"))
 
 # COMMAND ----------
 
@@ -186,6 +235,12 @@ null_emails_result = result_ex2.filter("email_address IS NULL").count()
 assert null_emails_result == null_emails_source, f"NULL email count changed: {null_emails_source} -> {null_emails_result}"
 
 print("Exercise 2 passed!")
+
+# COMMAND ----------
+
+# DBTITLE 1,load ex3
+order_ex3 = spark.table(f"{CATALOG}.{SCHEMA}.orders_ex3")
+display(order_ex3)
 
 # COMMAND ----------
 
@@ -224,7 +279,22 @@ print("Exercise 2 passed!")
 
 # EXERCISE_KEY: pyspark_ex3
 # TODO: Add order_tier and priority_score columns using when/otherwise, write to Delta
+from pyspark.sql import functions as F
+output_ex3 = (order_ex3
+              .withColumn('order_tier',F.when(F.col('status').isin(['cancelled','return']),'inactive')
+                          .when(F.col('amount')>=200,'premium')
+                          .when(F.col('amount')>=50,'standard')
+                          .when(F.col('amount')>0,'budget')
+                          .otherwise('free'))
+              .withColumn('priority_score',F.when(F.col('order_tier')=='premium',4)
+                          .when(F.col('order_tier')=='standard',3)
+                          .when(F.col('order_tier')=='budget',2)
+                          .when(F.col('order_tier')=='free',1)
+                          .otherwise(0)))
+
+output_ex3.write.format('delta').mode('overwrite').saveAsTable(f"{CATALOG}.{SCHEMA}.tiered_orders_ex3")                        
 # Your code here
+display(spark.table(f"{CATALOG}.{SCHEMA}.tiered_orders_ex3"))
 
 # COMMAND ----------
 
@@ -272,6 +342,11 @@ print("Exercise 3 passed!")
 
 # COMMAND ----------
 
+order_ex4 = spark.table(f"{CATALOG}.{SCHEMA}.orders_ex4")
+display(order_ex4)
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ---
 # MAGIC ## Exercise 4: Pivot - order counts by status per customer
@@ -302,6 +377,14 @@ print("Exercise 3 passed!")
 # EXERCISE_KEY: pyspark_ex4
 # TODO: Pivot orders by status to get per-customer order counts, write to Delta
 # Your code here
+output_ex4 = (order_ex4
+                .groupBy('customer_id')
+                .pivot('status',["completed", "pending", "cancelled", "returned"])
+                .agg(F.count('order_id'))
+                .fillna(0)
+                )
+output_ex4.write.format('delta').mode('overwrite').saveAsTable(f"{CATALOG}.{SCHEMA}.customer_status_pivot_ex4")
+display(spark.table(f"{CATALOG}.{SCHEMA}.customer_status_pivot_ex4"))
 
 # COMMAND ----------
 
@@ -336,6 +419,11 @@ for col_name in status_cols:
     assert null_count == 0, f"Column {col_name} has {null_count} nulls (should be 0)"
 
 print("Exercise 4 passed!")
+
+# COMMAND ----------
+
+order_ex5 = spark.table(f"{CATALOG}.{SCHEMA}.customer_metrics_ex5")
+display(order_ex5)
 
 # COMMAND ----------
 
@@ -377,6 +465,12 @@ print("Exercise 4 passed!")
 # EXERCISE_KEY: pyspark_ex5
 # TODO: Unpivot wide metrics to long format using stack(), filter zeros, write to Delta
 # Your code here
+output_ex5 = (order_ex5
+              .selectExpr('customer_id', 'name', "stack(3, 'completed_orders', completed_orders, 'pending_orders', pending_orders, 'cancelled_orders', cancelled_orders) as (metric_name, metric_value)")
+              .filter('metric_value > 0')
+             )
+output_ex5.write.format('delta').mode('overwrite').saveAsTable(f"{CATALOG}.{SCHEMA}.customer_metrics_long_ex5")
+display(spark.table(f"{CATALOG}.{SCHEMA}.customer_metrics_long_ex5"))
 
 # COMMAND ----------
 
@@ -413,6 +507,11 @@ assert result_completed_sum == source_completed_sum, (
 assert "total_revenue" not in actual_metrics, "total_revenue should not be unpivoted"
 
 print("Exercise 5 passed!")
+
+# COMMAND ----------
+
+events_ex6 = spark.table(f"{CATALOG}.{SCHEMA}.events_ex6")
+display(events_ex6)
 
 # COMMAND ----------
 
