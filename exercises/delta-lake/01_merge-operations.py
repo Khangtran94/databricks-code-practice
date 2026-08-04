@@ -516,8 +516,17 @@ print("Exercise 7 passed!")
 
 # COMMAND ----------
 
-display(spark.table(f"{CATALOG}.{SCHEMA}.merge_ex8_source").orderBy('customer_id'))
-display(spark.table(f"{CATALOG}.{SCHEMA}.merge_ex8_target").orderBy('customer_id'))
+# DBTITLE 1,load ex8 source
+# MAGIC %sql
+# MAGIC SELECT *
+# MAGIC FROM db_code.merge_operations.merge_ex8_source;
+
+# COMMAND ----------
+
+# DBTITLE 1,load ex8 target
+# MAGIC %sql
+# MAGIC SELECT *
+# MAGIC FROM db_code.merge_operations.merge_ex8_target;
 
 # COMMAND ----------
 
@@ -581,16 +590,34 @@ print("Idempotency: re-run your TODO cell then this cell. Assertions must still 
 
 # COMMAND ----------
 
-display(spark.table(f"{CATALOG}.{SCHEMA}.merge_ex9_source"))
-display(spark.table(f"{CATALOG}.{SCHEMA}.merge_ex9_target"))
+# DBTITLE 1,load ex9 source
+# MAGIC %sql
+# MAGIC SELECT *
+# MAGIC FROM db_code.merge_operations.merge_ex9_source;
 
 # COMMAND ----------
 
-# EXERCISE_KEY: merge_ex9
-# TODO: Write your solution here
+# DBTITLE 1,load ex9 target
+# MAGIC %sql
+# MAGIC SELECT *
+# MAGIC FROM db_code.merge_operations.merge_ex9_target;
 
-# Your code here
-display(spark.table(f"{CATALOG}.{SCHEMA}.merge_ex9_target"))
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC MERGE WITH SCHEMA EVOLUTION INTO db_code.merge_operations.merge_ex9_target AS t
+# MAGIC USING db_code.merge_operations.merge_ex9_source AS s
+# MAGIC ON t.order_id = s.order_id
+# MAGIC WHEN MATCHED THEN UPDATE SET *
+# MAGIC WHEN NOT MATCHED THEN INSERT *;
+# MAGIC
+# MAGIC SELECT *
+# MAGIC FROM db_code.merge_operations.merge_ex9_target;
+
+# COMMAND ----------
+
+CATALOG = 'db_code'
+SCHEMA = 'merge_operations'
 
 # COMMAND ----------
 
