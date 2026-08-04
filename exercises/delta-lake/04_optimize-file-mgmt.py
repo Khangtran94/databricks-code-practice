@@ -1,5 +1,8 @@
 # Databricks notebook source
-# COMMAND ----------
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
 # MAGIC %md
 # MAGIC # OPTIMIZE & File Management
 # MAGIC **Topic**: Delta Lake | **Exercises**: 6 | **Checkpoints**: 2 | **Total Time**: ~80 min
@@ -33,6 +36,13 @@
 # MAGIC %run ./setup/optimize-file-mgmt-setup
 
 # COMMAND ----------
+
+CATALOG = 'db_code'
+SCHEMA = 'optimize_file_mgmt'
+BASE_SCHEMA = 'delta_lake'
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC **Setup complete.** Exercise tables are in `{CATALOG}.{SCHEMA}` (optimize_file_mgmt schema).
 # MAGIC Base tables (orders) are in `{CATALOG}.{BASE_SCHEMA}` (delta_lake schema).
@@ -44,6 +54,7 @@
 # MAGIC - `opt_ex8_orders` - pre-optimized fragmented table (for history analysis)
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Checkpoint 1: Inspect File Count and Size
 # MAGIC **Time**: ~5 min
@@ -62,16 +73,30 @@
 
 # COMMAND ----------
 
+# DBTITLE 1,load ex1 order
+# MAGIC %sql
+# MAGIC SELECT *
+# MAGIC FROM db_code.optimize_file_mgmt.opt_ex1_orders;
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC DESCRIBE DETAIL db_code.optimize_file_mgmt.opt_ex1_orders;
+
+# COMMAND ----------
+
 # EXERCISE_KEY: opt_ex1
 # TODO: Run DESCRIBE DETAIL on opt_ex1_orders, then fill in what you observe
 
-num_files = 0      # Replace: numFiles from DESCRIBE DETAIL
-size_bytes = 0     # Replace: sizeInBytes from DESCRIBE DETAIL
+num_files = 10      # Replace: numFiles from DESCRIBE DETAIL
+size_bytes = 22967     # Replace: sizeInBytes from DESCRIBE DETAIL
 
 spark.sql(f"""
     CREATE OR REPLACE TABLE {CATALOG}.{SCHEMA}.opt_ex1_detail AS
     SELECT CAST({num_files} AS LONG) AS num_files, CAST({size_bytes} AS LONG) AS size_bytes
 """)
+
+display(spark.table(f"{CATALOG}.{SCHEMA}.opt_ex1_detail"))
 
 # COMMAND ----------
 
@@ -84,6 +109,7 @@ assert result.size_bytes > 0, f"sizeInBytes should be positive, got {result.size
 print("Exercise 1 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 2: Run OPTIMIZE to Compact Files
 # MAGIC **Difficulty**: Easy | **Time**: ~5 min
@@ -101,11 +127,24 @@ print("Exercise 1 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: opt_ex2
-# TODO: Run OPTIMIZE on the fragmented table
+# DBTITLE 1,load ex2 order
+# MAGIC %sql
+# MAGIC SELECT *
+# MAGIC FROM db_code.optimize_file_mgmt.opt_ex2_orders
 
-# Your code here
+# COMMAND ----------
 
+# MAGIC %sql
+# MAGIC DESCRIBE DETAIL db_code.optimize_file_mgmt.opt_ex2_orders;
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC -- EXERCISE_KEY: opt_ex2
+# MAGIC -- TODO: Run OPTIMIZE on the fragmented table
+# MAGIC OPTIMIZE db_code.optimize_file_mgmt.opt_ex2_orders;
+# MAGIC -- Your code here
+# MAGIC DESCRIBE DETAIL db_code.optimize_file_mgmt.opt_ex2_orders;
 
 # COMMAND ----------
 
@@ -120,6 +159,7 @@ assert row_count >= 18, f"Data should be preserved after OPTIMIZE, got {row_coun
 print("Exercise 2 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 3: OPTIMIZE with ZORDER
 # MAGIC **Difficulty**: Medium | **Time**: ~10 min
@@ -144,11 +184,34 @@ print("Exercise 2 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: opt_ex3
-# TODO: Run OPTIMIZE with ZORDER BY on the status column
+# DBTITLE 1,load ex3 order
+# MAGIC %sql
+# MAGIC SELECT *
+# MAGIC FROM db_code.optimize_file_mgmt.opt_ex3_orders;
 
-# Your code here
+# COMMAND ----------
 
+# MAGIC %sql
+# MAGIC SELECT status, COUNT(*)
+# MAGIC FROM db_code.optimize_file_mgmt.opt_ex3_orders
+# MAGIC GROUP BY 1 
+# MAGIC ORDER BY 2 DESC
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC DESCRIBE DETAIL db_code.optimize_file_mgmt.opt_ex3_orders;
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC OPTIMIZE db_code.optimize_file_mgmt.opt_ex3_orders
+# MAGIC ZORDER BY (status);
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC DESCRIBE DETAIL db_code.optimize_file_mgmt.opt_ex3_orders;
 
 # COMMAND ----------
 
@@ -167,6 +230,12 @@ assert 'zOrderBy' in str(params), "OPTIMIZE should include zOrderBy in parameter
 print("Exercise 3 passed!")
 
 # COMMAND ----------
+
+# MAGIC %sql
+# MAGIC DESCRIBE HISTORY db_code.optimize_file_mgmt.opt_ex3_orders;
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 4: Measure File Metrics Before and After OPTIMIZE
 # MAGIC **Difficulty**: Medium | **Time**: ~15 min
@@ -185,13 +254,35 @@ print("Exercise 3 passed!")
 
 # COMMAND ----------
 
+# DBTITLE 1,load ex4 order
+# MAGIC %sql
+# MAGIC SELECT *
+# MAGIC FROM db_code.optimize_file_mgmt.opt_ex4_orders;
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC DESCRIBE DETAIL db_code.optimize_file_mgmt.opt_ex4_orders;
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC OPTIMIZE db_code.optimize_file_mgmt.opt_ex4_orders;
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC DESCRIBE DETAIL db_code.optimize_file_mgmt.opt_ex4_orders;
+
+# COMMAND ----------
+
 # EXERCISE_KEY: opt_ex4
 # TODO: Run DESCRIBE DETAIL, OPTIMIZE, DESCRIBE DETAIL again, then fill in values
 
-before_files = 0  # Replace: numFiles BEFORE optimize
+before_files = 10  # Replace: numFiles BEFORE optimize
 # Write your OPTIMIZE statement here
 
-after_files = 0   # Replace: numFiles AFTER optimize
+after_files = 1   # Replace: numFiles AFTER optimize
 
 spark.sql(f"""
     CREATE OR REPLACE TABLE {CATALOG}.{SCHEMA}.opt_ex4_comparison AS
@@ -211,6 +302,7 @@ assert row.before_files > row.after_files, \
 print("Exercise 4 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 5: Set VACUUM Retention Period
 # MAGIC **Difficulty**: Medium | **Time**: ~10 min
@@ -230,11 +322,26 @@ print("Exercise 4 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: opt_ex5
-# TODO: Set the VACUUM retention property to 168 hours
+# DBTITLE 1,load ex5 orders
+# MAGIC %sql
+# MAGIC SELECT *
+# MAGIC FROM db_code.optimize_file_mgmt.opt_ex5_orders;
 
-# Your code here
+# COMMAND ----------
 
+# MAGIC %sql 
+# MAGIC SHOW TBLPROPERTIES db_code.optimize_file_mgmt.opt_ex5_orders;
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC ALTER TABLE db_code.optimize_file_mgmt.opt_ex5_orders
+# MAGIC SET TBLPROPERTIES ('delta.deletedFileRetentionDuration'='168 hours');
+
+# COMMAND ----------
+
+# MAGIC %sql 
+# MAGIC SHOW TBLPROPERTIES db_code.optimize_file_mgmt.opt_ex5_orders;
 
 # COMMAND ----------
 
@@ -249,6 +356,7 @@ assert retention_rows[0].value == "168 hours", \
 print("Exercise 5 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 6: Run VACUUM and Verify
 # MAGIC **Difficulty**: Medium | **Time**: ~10 min
@@ -271,11 +379,31 @@ print("Exercise 5 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: opt_ex6
-# TODO: Set retention to 0 hours, run VACUUM, restore retention
+# DBTITLE 1,load ex6 order
+# MAGIC %sql 
+# MAGIC SELECT *
+# MAGIC FROM db_code.optimize_file_mgmt.opt_ex6_orders;
 
-# Your code here
+# COMMAND ----------
 
+# MAGIC %sql
+# MAGIC SHOW TBLPROPERTIES db_code.optimize_file_mgmt.opt_ex6_orders;
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC ALTER TABLE db_code.optimize_file_mgmt.opt_ex6_orders
+# MAGIC SET TBLPROPERTIES ('delta.deletedFileRetentionDuration'='0 hours');
+# MAGIC
+# MAGIC VACUUM db_code.optimize_file_mgmt.opt_ex6_orders;
+# MAGIC
+# MAGIC ALTER TABLE db_code.optimize_file_mgmt.opt_ex6_orders
+# MAGIC SET TBLPROPERTIES ('delta.deletedFileRetentionDuration'='168 hours');
+
+# COMMAND ----------
+
+# MAGIC %sql 
+# MAGIC DESCRIBE HISTORY db_code.optimize_file_mgmt.opt_ex6_orders;
 
 # COMMAND ----------
 
@@ -288,6 +416,7 @@ assert vacuum_ops > 0, "Should have at least one VACUUM operation in history"
 print("Exercise 6 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Checkpoint 7: Table Health Report from DESCRIBE DETAIL
 # MAGIC **Time**: ~5 min
@@ -303,12 +432,24 @@ print("Exercise 6 passed!")
 
 # COMMAND ----------
 
+# DBTITLE 1,load ex7 order
+# MAGIC %sql
+# MAGIC SELECT * 
+# MAGIC FROM db_code.optimize_file_mgmt.opt_ex7_orders;
+
+# COMMAND ----------
+
+# MAGIC %sql 
+# MAGIC DESCRIBE DETAIL db_code.optimize_file_mgmt.opt_ex7_orders;
+
+# COMMAND ----------
+
 # EXERCISE_KEY: opt_ex7
 # TODO: Run DESCRIBE DETAIL on opt_ex7_orders, then fill in what you observe
 
-table_name = ""        # Replace: the 'name' value from DESCRIBE DETAIL
-num_files = 0          # Replace: numFiles
-size_bytes = 0         # Replace: sizeInBytes
+table_name = "db_code.optimize_file_mgmt.opt_ex7_orders"        # Replace: the 'name' value from DESCRIBE DETAIL
+num_files = 1          # Replace: numFiles
+size_bytes = 2401         # Replace: sizeInBytes
 
 spark.sql(f"""
     CREATE OR REPLACE TABLE {CATALOG}.{SCHEMA}.opt_ex7_report AS
@@ -329,6 +470,7 @@ assert row.size_bytes > 0, f"Size should be positive, got {row.size_bytes}"
 print("Exercise 7 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 8: Analyze OPTIMIZE History
 # MAGIC **Difficulty**: Hard | **Time**: ~15 min
@@ -349,12 +491,24 @@ print("Exercise 7 passed!")
 
 # COMMAND ----------
 
+# DBTITLE 1,load ex8 order
+# MAGIC %sql
+# MAGIC SELECT * 
+# MAGIC FROM db_code.optimize_file_mgmt.opt_ex8_orders;
+
+# COMMAND ----------
+
+# MAGIC %sql 
+# MAGIC DESCRIBE HISTORY db_code.optimize_file_mgmt.opt_ex8_orders;
+
+# COMMAND ----------
+
 # EXERCISE_KEY: opt_ex8
 # TODO: Run DESCRIBE HISTORY, find the OPTIMIZE row, read operationMetrics, fill in values
 
-version = 0            # Replace: version number of the OPTIMIZE operation
-files_added = "0"      # Replace: operationMetrics['numAddedFiles']
-files_removed = "0"    # Replace: operationMetrics['numRemovedFiles']
+version = 10            # Replace: version number of the OPTIMIZE operation
+files_added = "1"      # Replace: operationMetrics['numAddedFiles']
+files_removed = "22967"    # Replace: operationMetrics['numRemovedFiles']
 
 spark.sql(f"""
     CREATE OR REPLACE TABLE {CATALOG}.{SCHEMA}.opt_ex8_analysis AS
