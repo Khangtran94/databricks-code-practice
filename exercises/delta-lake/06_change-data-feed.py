@@ -1,5 +1,8 @@
 # Databricks notebook source
-# COMMAND ----------
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
 # MAGIC %md
 # MAGIC # Change Data Feed (CDF)
 # MAGIC **Topic**: Delta Lake | **Exercises**: 7 | **Total Time**: ~80 min
@@ -29,6 +32,12 @@
 # MAGIC %run ./setup/change-data-feed-setup
 
 # COMMAND ----------
+
+CATALOG = 'db_code'
+SCHEMA = 'change_data_feed'
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC **Setup complete.** Exercise tables are in `{CATALOG}.{SCHEMA}` (change_data_feed schema).
 # MAGIC Base tables (orders) are in `{CATALOG}.{BASE_SCHEMA}` (delta_lake schema).
@@ -42,6 +51,7 @@
 # MAGIC - Ex 7 (hard): `cdf_ex7_orders` - CDF enabled, then MERGE at v1 (1 update + 1 insert)
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 1: Enable CDF on an Existing Table
 # MAGIC **Difficulty**: Easy | **Time**: ~5 min
@@ -57,11 +67,23 @@
 
 # COMMAND ----------
 
-# EXERCISE_KEY: cdf_ex1
-# TODO: Enable Change Data Feed on cdf_ex1_orders
+# DBTITLE 1,load ex1 order
+# MAGIC %sql
+# MAGIC SELECT *
+# MAGIC FROM db_code.change_data_feed.cdf_ex1_orders;
 
-# Your code here
+# COMMAND ----------
 
+# MAGIC %sql
+# MAGIC SHOW TBLPROPERTIES db_code.change_data_feed.cdf_ex1_orders;
+
+# COMMAND ----------
+
+# MAGIC %sql 
+# MAGIC ALTER TABLE db_code.change_data_feed.cdf_ex1_orders
+# MAGIC SET TBLPROPERTIES ('delta.enableChangeDataFeed'='true');
+# MAGIC
+# MAGIC SHOW TBLPROPERTIES db_code.change_data_feed.cdf_ex1_orders;
 
 # COMMAND ----------
 
@@ -75,6 +97,7 @@ assert cdf_rows[0].value == "true", f"CDF should be enabled, got '{cdf_rows[0].v
 print("Exercise 1 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 2: Read Changes After INSERT
 # MAGIC **Difficulty**: Easy | **Time**: ~5 min
@@ -93,11 +116,35 @@ print("Exercise 1 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: cdf_ex2
-# TODO: Read CDF changes from version 1 and save to cdf_ex2_changes
+# DBTITLE 1,load ex2 order
+# MAGIC %sql
+# MAGIC SELECT *
+# MAGIC FROM db_code.change_data_feed.cdf_ex2_orders;
 
-# Your code here
+# COMMAND ----------
 
+# MAGIC %sql
+# MAGIC SHOW TBLPROPERTIES db_code.change_data_feed.cdf_ex2_orders;
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC DESCRIBE HISTORY db_code.change_data_feed.cdf_ex2_orders;
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT * FROM db_code.change_data_feed.cdf_ex2_orders VERSION AS OF 0
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC CREATE OR REPLACE TABLE db_code.change_data_feed.cdf_ex2_changes
+# MAGIC AS SELECT * 
+# MAGIC FROM table_changes('db_code.change_data_feed.cdf_ex2_orders', 1);
+# MAGIC
+# MAGIC SELECT *
+# MAGIC FROM db_code.change_data_feed.cdf_ex2_changes;
 
 # COMMAND ----------
 
@@ -112,6 +159,7 @@ assert result.filter("order_id = 'ORD-101'").count() == 1, "ORD-101 should be in
 print("Exercise 2 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 3: Read Changes After UPDATE
 # MAGIC **Difficulty**: Medium | **Time**: ~10 min
@@ -131,11 +179,25 @@ print("Exercise 2 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: cdf_ex3
-# TODO: Read CDF changes from the UPDATE and save to cdf_ex3_changes
+# DBTITLE 1,load ex3 ordr
+# MAGIC %sql 
+# MAGIC SELECT * 
+# MAGIC FROM db_code.change_data_feed.cdf_ex3_orders;
 
-# Your code here
+# COMMAND ----------
 
+# MAGIC %sql
+# MAGIC DESCRIBE HISTORY db_code.change_data_feed.cdf_ex3_orders;
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC CREATE OR REPLACE TABLE db_code.change_data_feed.cdf_ex3_changes
+# MAGIC AS SELECT *
+# MAGIC FROM table_changes('db_code.change_data_feed.cdf_ex3_orders',1);
+# MAGIC
+# MAGIC SELECT *
+# MAGIC FROM db_code.change_data_feed.cdf_ex3_changes;
 
 # COMMAND ----------
 
@@ -153,6 +215,7 @@ assert post.amount == 120.00, f"Updated amount should be 120.00, got {post.amoun
 print("Exercise 3 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 4: Read Changes After DELETE
 # MAGIC **Difficulty**: Medium | **Time**: ~10 min
@@ -171,11 +234,20 @@ print("Exercise 3 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: cdf_ex4
-# TODO: Read CDF changes from the DELETE and save to cdf_ex4_changes
+# DBTITLE 1,load ex4 orders
+# MAGIC %sql
+# MAGIC SELECT *
+# MAGIC FROM db_code.change_data_feed.cdf_ex4_orders;
 
-# Your code here
+# COMMAND ----------
 
+# MAGIC %sql
+# MAGIC CREATE OR REPLACE TABLE db_code.change_data_feed.cdf_ex4_changes
+# MAGIC AS SELECT *
+# MAGIC FROM table_changes('db_code.change_data_feed.cdf_ex4_orders',1);
+# MAGIC
+# MAGIC SELECT * 
+# MAGIC FROM db_code.change_data_feed.cdf_ex4_changes;
 
 # COMMAND ----------
 
@@ -190,6 +262,7 @@ assert row.order_id == "ORD-005", f"Deleted order should be ORD-005, got '{row.o
 print("Exercise 4 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 5: Filter CDF by Operation Type
 # MAGIC **Difficulty**: Medium | **Time**: ~10 min
@@ -210,11 +283,21 @@ print("Exercise 4 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: cdf_ex5
-# TODO: Read all CDF changes, filter for inserts only, save to cdf_ex5_inserts
+# DBTITLE 1,load ex5 order
+# MAGIC %sql
+# MAGIC SELECT *
+# MAGIC FROM db_code.change_data_feed.cdf_ex5_orders;
 
-# Your code here
+# COMMAND ----------
 
+# MAGIC %sql
+# MAGIC CREATE OR REPLACE TABLE db_code.change_data_feed.cdf_ex5_inserts
+# MAGIC AS SELECT *
+# MAGIC FROM table_changes('db_code.change_data_feed.cdf_ex5_orders',1,3)
+# MAGIC WHERE _change_type = 'insert';
+# MAGIC
+# MAGIC SELECT *
+# MAGIC FROM db_code.change_data_feed.cdf_ex5_inserts;
 
 # COMMAND ----------
 
@@ -229,6 +312,7 @@ assert result.collect()[0].order_id == "ORD-101", "Insert should be ORD-101"
 print("Exercise 5 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 6: Propagate Changes to Downstream Table
 # MAGIC **Difficulty**: Hard | **Time**: ~20 min
@@ -254,11 +338,38 @@ print("Exercise 5 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: cdf_ex6
-# TODO: Read CDF from source, MERGE into target to sync
+# DBTITLE 1,load ex6 source
+# MAGIC %sql
+# MAGIC SELECT *
+# MAGIC FROM db_code.change_data_feed.cdf_ex6_source;    
 
-# Your code here
+# COMMAND ----------
 
+# MAGIC %sql
+# MAGIC SELECT *
+# MAGIC FROM table_changes('db_code.change_data_feed.cdf_ex6_source',1);
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC MERGE INTO db_code.change_data_feed.cdf_ex6_target AS t
+# MAGIC USING (SELECT * 
+# MAGIC     FROM table_changes('db_code.change_data_feed.cdf_ex6_source',1)
+# MAGIC     WHERE _change_type != 'update_preimage') AS s
+# MAGIC ON t.order_id = s.order_id
+# MAGIC WHEN MATCHED AND s._change_type = 'delete' THEN DELETE
+# MAGIC WHEN MATCHED AND s._change_type = 'update_postimage' THEN UPDATE SET
+# MAGIC     t.customer_id = s.customer_id,
+# MAGIC     t.product_id = s.product_id,
+# MAGIC     t.amount = s.amount,
+# MAGIC     t.status = s.status,
+# MAGIC     t.order_date = s.order_date,
+# MAGIC     t.updated_at = s.updated_at
+# MAGIC WHEN NOT MATCHED AND s._change_type = 'insert' THEN INSERT (order_id, customer_id, product_id, amount, status, order_date, updated_at)
+# MAGIC VALUES (s.order_id, s.customer_id, s.product_id, s.amount, s.status, s.order_date, s.updated_at);
+# MAGIC
+# MAGIC SELECT *
+# MAGIC FROM db_code.change_data_feed.cdf_ex6_target;
 
 # COMMAND ----------
 
@@ -278,6 +389,7 @@ assert target.filter("order_id = 'ORD-101'").count() == 1, \
 print("Exercise 6 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 7: Read CDF from a MERGE Operation
 # MAGIC **Difficulty**: Hard | **Time**: ~15 min
@@ -296,11 +408,20 @@ print("Exercise 6 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: cdf_ex7
-# TODO: Read CDF from the MERGE operation and save to cdf_ex7_changes
+# DBTITLE 1,load ex7 order
+# MAGIC %sql
+# MAGIC SELECT *
+# MAGIC FROM db_code.change_data_feed.cdf_ex7_orders;
 
-# Your code here
+# COMMAND ----------
 
+# MAGIC %sql
+# MAGIC CREATE OR REPLACE TABLE db_code.change_data_feed.cdf_ex7_changes
+# MAGIC AS SELECT *
+# MAGIC FROM table_changes('db_code.change_data_feed.cdf_ex7_orders',1);
+# MAGIC
+# MAGIC SELECT *
+# MAGIC FROM db_code.change_data_feed.cdf_ex7_changes;
 
 # COMMAND ----------
 
