@@ -497,6 +497,14 @@ print("Exercise 7 passed!")
 # MAGIC | effective_start_date | DATE | When this version became active |
 # MAGIC | effective_end_date | DATE | 9999-12-31 for current records |
 # MAGIC
+# MAGIC example
+# MAGIC | customer_id | name         | email             | region  | tier   | is_current | effective_start_date | effective_end_date |
+# MAGIC |-------------|--------------|-------------------|---------|--------|------------|----------------------|--------------------|
+# MAGIC | CUST-001    | Alice Smith  | alice@example.com | US-East | gold   | true       | 2024-01-15           | 9999-12-31         |
+# MAGIC | CUST-002    | Bob Johnson  | bob@example.com   | US-West | silver | true       | 2024-02-20           | 9999-12-31         |
+# MAGIC | CUST-003    | Carol Lee    | carol@example.com | US-West | gold   | true       | 2024-03-10           | 9999-12-31         |
+# MAGIC
+# MAGIC
 # MAGIC **Expected Output**: 6 rows.
 # MAGIC CUST-001: 2 rows (old expired + new current with tier='platinum').
 # MAGIC CUST-002: 1 row (unchanged). CUST-003: 2 rows (old expired + new current).
@@ -531,9 +539,58 @@ print("Exercise 7 passed!")
 # COMMAND ----------
 
 # EXERCISE_KEY: merge_ex8
-# TODO: Write your solution here
+# SCD Type 2: Expire old records and insert new versions
 
-# Your code here
+# Step 1: Expire old current records for changed customers
+spark.sql(f"""
+    MERGE INTO {CATALOG}.{SCHEMA}.merge_ex8_target AS t
+    USING (
+        SELECT s.*, t.customer_id AS existing_customer
+        FROM {CATALOG}.{SCHEMA}.merge_ex8_source s
+        LEFT JOIN {CATALOG}.{SCHEMA}.merge_ex8_target t
+        ON s.customer_id = t.customer_id AND t.is_current = true
+        WHERE t.customer_id IS NOT NULL
+          AND (
+              s.name <=> t.name IS FALSE OR
+              s.email <=> t.email IS FALSE OR
+              s.region <=> t.region IS FALSE OR
+              s.tier <=> t.tier IS FALSE
+          )
+    ) changes
+    ON t.customer_id = changes.customer_id AND t.is_current = true
+    WHEN MATCHED THEN
+        UPDATE SET
+            is_current = false,
+            effective_end_date = CURRENT_DATE()
+""")
+
+# Step 2: Insert new versions (changed customers + brand new customers)
+spark.sql(f"""
+    INSERT INTO {CATALOG}.{SCHEMA}.merge_ex8_target
+    SELECT 
+        s.customer_id,
+        s.name,
+        s.email,
+        s.region,
+        s.tier,
+        true AS is_current,
+        CURRENT_DATE() AS effective_start_date,
+        DATE '9999-12-31' AS effective_end_date
+    FROM {CATALOG}.{SCHEMA}.merge_ex8_source s
+    LEFT JOIN {CATALOG}.{SCHEMA}.merge_ex8_target t
+    ON s.customer_id = t.customer_id AND t.is_current = true
+    WHERE 
+        -- New customers (not in target at all)
+        t.customer_id IS NULL
+        -- OR changed customers (attributes differ)
+        OR (
+            s.name <=> t.name IS FALSE OR
+            s.email <=> t.email IS FALSE OR
+            s.region <=> t.region IS FALSE OR
+            s.tier <=> t.tier IS FALSE
+        )
+""")
+
 display(spark.table(f"{CATALOG}.{SCHEMA}.merge_ex8_target"))
 
 # COMMAND ----------
