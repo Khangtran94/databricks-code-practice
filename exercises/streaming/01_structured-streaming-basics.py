@@ -1,5 +1,8 @@
 # Databricks notebook source
-# COMMAND ----------
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
 # MAGIC %md
 # MAGIC # Structured Streaming Basics
 # MAGIC **Topic**: Streaming | **Exercises**: 8 | **Total Time**: ~90 min
@@ -29,6 +32,7 @@
 # MAGIC %run ./setup/structured-streaming-basics-setup
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC **Setup complete.** Per-exercise source tables and checkpoint paths are ready under
 # MAGIC `db_code.structured_streaming_basics`.
@@ -46,6 +50,12 @@
 # MAGIC `.awaitTermination()` so the notebook does not block.
 
 # COMMAND ----------
+
+CATALOG = 'db_code'
+SCHEMA = 'structured_streaming_basics'
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 1: Read a Delta Table as a Stream, Write to Another Delta Table
 # MAGIC **Difficulty**: Easy | **Time**: ~10 min
@@ -71,11 +81,14 @@
 
 # COMMAND ----------
 
-# EXERCISE_KEY: ss_basics_ex1
-# TODO: Read ex1_source as a stream and write all rows to ex1_target
-
-# Your code here
-
+# DBTITLE 1,read stream ex1_source
+s1 = spark.readStream.table(f"{CATALOG}.{SCHEMA}.ex1_source")
+(s1.writeStream.format("delta")
+    .outputMode("append")
+    .option("checkpointLocation",f"{CHECKPOINT_BASE}/ex1")
+    .trigger(availableNow=True)
+    .toTable(f"{CATALOG}.{SCHEMA}.ex1_target")
+    .awaitTermination())
 
 # COMMAND ----------
 
@@ -93,6 +106,7 @@ assert ev3_amount == 120.50, f"EV-003 amount should be 120.50, got {ev3_amount}"
 print("Exercise 1 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 2: Filter a Streaming DataFrame Before Writing
 # MAGIC **Difficulty**: Easy | **Time**: ~10 min
@@ -120,11 +134,16 @@ print("Exercise 1 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: ss_basics_ex2
-# TODO: Filter the stream to only purchase events and write to ex2_target
-
-# Your code here
-
+(spark.readStream
+ .table(f"{CATALOG}.{SCHEMA}.ex2_source")
+ .filter("event_type = 'purchase'")
+ .writeStream
+ .format('delta')
+ .outputMode("append")
+ .option('checkpointLocation',f"{CHECKPOINT_BASE}/ex2")
+ .trigger(availableNow=True)
+ .toTable(f"{CATALOG}.{SCHEMA}.ex2_target")
+ .awaitTermination())
 
 # COMMAND ----------
 
@@ -140,6 +159,7 @@ assert result.filter("event_id = 'EV-002'").count() == 0, "EV-002 (view) should 
 print("Exercise 2 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 3: Add a Derived Column to a Streaming DataFrame
 # MAGIC **Difficulty**: Easy | **Time**: ~10 min
@@ -166,10 +186,18 @@ print("Exercise 2 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: ss_basics_ex3
-# TODO: Add amount_with_tax = amount * 1.10 and write to ex3_target
+from pyspark.sql import functions as F
 
-# Your code here
+(spark.readStream
+ .table(f"{CATALOG}.{SCHEMA}.ex3_source")
+ .withColumn("amount_with_tax",F.col("amount") * 1.10)
+ .writeStream
+ .format('delta')
+ .outputMode('append')
+ .option('checkpointLocation',f"{CHECKPOINT_BASE}/ex3")
+ .trigger(availableNow=True)
+ .toTable(f"{CATALOG}.{SCHEMA}.ex3_target")
+ .awaitTermination())
 
 
 # COMMAND ----------
@@ -191,6 +219,7 @@ assert abs(ev3_tax - 132.55) < 1e-6, f"EV-003 amount_with_tax should be 132.55, 
 print("Exercise 3 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 4: Append-Only Ingestion - Pick the Right Output Mode
 # MAGIC **Difficulty**: Medium | **Time**: ~10 min
@@ -218,12 +247,16 @@ print("Exercise 3 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: ss_basics_ex4
-# TODO: Stream from ex4_source to ex4_target with the correct output mode
-# Set `correct_mode` to one of "append", "complete", "update".
-
-# Your code here
-
+correct_mode = 'append'
+(spark.readStream
+ .table(f"{CATALOG}.{SCHEMA}.ex4_source")
+ .writeStream
+ .format('delta')
+ .outputMode(correct_mode)
+ .option('checkpointLocation',f"{CHECKPOINT_BASE}/ex4")
+ .trigger(availableNow=True)
+ .toTable(f"{CATALOG}.{SCHEMA}.ex4_target")
+ .awaitTermination())
 
 # COMMAND ----------
 
@@ -241,6 +274,7 @@ assert ev5_amount == 75.25, f"EV-005 amount should be 75.25, got {ev5_amount}"
 print("Exercise 4 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 5: Trigger Modes - Understanding the Cost/Latency Tradeoff
 # MAGIC **Difficulty**: Medium | **Time**: ~10 min
@@ -276,11 +310,18 @@ print("Exercise 4 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: ss_basics_ex5
-# TODO: Write the availableNow streaming query, then set `latency_winner` and `cost_winner`.
+latency_winner = 'processingTime'
+cost_winner = 'availableNow'
 
-# Your code here
-
+(spark.readStream
+ .table(f"{CATALOG}.{SCHEMA}.ex5_source")
+ .writeStream
+ .format('delta')
+ .outputMode('append')
+ .option('checkpointLocation',f"{CHECKPOINT_BASE}/ex5")
+ .trigger(availableNow=True)
+ .toTable(f"{CATALOG}.{SCHEMA}.ex5_target_available_now")
+ .awaitTermination())
 
 # COMMAND ----------
 
@@ -299,6 +340,7 @@ assert cost_winner == "availableNow", \
 print("Exercise 5 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 6: Streaming Aggregation in Complete Output Mode
 # MAGIC **Difficulty**: Medium | **Time**: ~10 min
@@ -329,11 +371,18 @@ print("Exercise 5 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: ss_basics_ex6
-# TODO: Count events per event_type as a streaming aggregation in complete mode.
-
-# Your code here
-
+(spark.readStream
+ .table(f"{CATALOG}.{SCHEMA}.ex6_source")
+ .groupBy("event_type")
+ .count()
+ .withColumnRenamed("count", "cnt")
+ .writeStream
+ .format("delta")
+ .outputMode('complete')
+ .option('checkpointLocation',f"{CHECKPOINT_BASE}/ex6")
+ .trigger(availableNow=True)
+ .toTable(f"{CATALOG}.{SCHEMA}.ex6_target")
+ .awaitTermination())
 
 # COMMAND ----------
 
@@ -355,6 +404,7 @@ assert click_cnt == 8, f"click count should be 8, got {click_cnt}"
 print("Exercise 6 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 7: Name a Query and Inspect lastProgress
 # MAGIC **Difficulty**: Medium | **Time**: ~10 min
@@ -385,11 +435,18 @@ print("Exercise 6 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: ss_basics_ex7
-# TODO: Start a named stream, then write its lastProgress metrics to ex7_progress.
+query = (spark.readStream
+ .table(f"{CATALOG}.{SCHEMA}.ex7_source")
+ .writeStream
+ .format('delta')
+ .outputMode('append')
+ .option('checkpointLocation',f"{CHECKPOINT_BASE}/ex7")
+ .trigger(availableNow=True)
+ .toTable(f"{CATALOG}.{SCHEMA}.ex7_target")
+ )
 
-# Your code here
-
+query.awaitTermination()
+query.lastProgress
 
 # COMMAND ----------
 
@@ -410,6 +467,7 @@ assert row["num_input_rows"] == 35, \
 print("Exercise 7 passed!")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercise 8: Deduplicate a Stream with dropDuplicates
 # MAGIC **Difficulty**: Hard | **Time**: ~20 min
@@ -442,11 +500,17 @@ print("Exercise 7 passed!")
 
 # COMMAND ----------
 
-# EXERCISE_KEY: ss_basics_ex8
-# TODO: Dedup the stream on event_id and write to ex8_target.
-
-# Your code here
-
+(spark.readStream
+    .table(f"{CATALOG}.{SCHEMA}.ex8_source")
+    .dropDuplicates(["event_id"])
+    .writeStream
+    .format("delta")
+    .outputMode("append")
+    .option("checkpointLocation", f"{CHECKPOINT_BASE}/ex8")
+    .trigger(availableNow=True)
+    .toTable(f"{CATALOG}.{SCHEMA}.ex8_target")
+    .awaitTermination()
+)
 
 # COMMAND ----------
 
